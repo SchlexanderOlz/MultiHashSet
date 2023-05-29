@@ -1,5 +1,6 @@
 mod multi_hash_set;
 
+
 use multi_hash_set::MultiHashSet;
 use std::{time::Instant, collections::HashSet};
 
@@ -9,14 +10,14 @@ fn main() {
 
     let start_time = Instant::now();
 
-    for i in 0..1000 {
+    for i in 0..10000 {
         my_set.put(i.to_string());
     }
 
     my_set.remove(&123.to_string());
     my_set.remove(&838.to_string());
 
-    for i in 0..1000 {
+    for i in 0..10000 {
         println!("{}", my_set.count(&i.to_string()));
     }
 

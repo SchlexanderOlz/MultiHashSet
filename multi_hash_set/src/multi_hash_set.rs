@@ -27,7 +27,7 @@ pub struct MultiHashSetIterator<V: Hash + PartialEq + Clone> {
 impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
 
     pub fn new() -> Self {
-        let standard_size = 10;
+        let standard_size = 11;
         let default_expansion_factor = 0.75;
 
         let empty_vec: Vec<Option<MultiHashElement<V>>> = (0..standard_size).map(|_| None).collect();
@@ -130,9 +130,9 @@ impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
     }
 
 
-    fn resize_check(&mut self) { // TODO: Make this function scalable (potential overflow because of f64)
+    fn resize_check(&mut self) {
         if self.used as f64 > self.size as f64 * self.expansion_factor as f64 {
-            self.size *= 2; // TODO: Change this to some more sensfull value
+            self.size = next_prime(self.size as u64) as usize;
 
             self.reallocate_positions();
         }
@@ -241,4 +241,26 @@ impl<V: Hash + PartialEq + Clone> MultiHashElement<V> {
         false
     }
 
+}
+
+
+fn next_prime(start: u64) -> u64 {
+    let limit = (start + 1) * (start + 1); // Set a limit for generating primes
+    let mut sieve = vec![true; limit as usize];
+    let mut current = start + 1;
+
+    while (current as f64).sqrt() as u64 <= start {
+        if sieve[current as usize] {
+            for i in (current * current..limit).step_by(current as usize) {
+                sieve[i as usize] = false;
+            }
+        }
+        current += 1;
+    }
+
+    while current < limit as u64 && !sieve[current as usize] {
+        current += 1;
+    }
+
+    current
 }
