@@ -4,13 +4,15 @@ mod multi_hash_set;
 use multi_hash_set::MultiHashSet;
 use std::{time::Instant, collections::HashSet};
 
+use crate::multi_hash_set::next_prime;
+
 fn main() {
     let mut my_set: MultiHashSet<String> = MultiHashSet::new();
     //let your_set: HashSet<String> = HashSet::new();
 
     let start_time = Instant::now();
 
-    for i in 0..10000 {
+    for i in 0..1000 {
         my_set.put(i.to_string());
     }
 
@@ -28,9 +30,6 @@ fn main() {
         println!("{}", element);
     }
 
-
-    println!("{}", my_set.contains(&500.to_string()));
-    println!("{}", my_set.contains(&838.to_string()));
 
     
     let elapsed_time = start_time.elapsed();

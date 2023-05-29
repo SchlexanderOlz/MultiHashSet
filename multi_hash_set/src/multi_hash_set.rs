@@ -244,23 +244,30 @@ impl<V: Hash + PartialEq + Clone> MultiHashElement<V> {
 }
 
 
-fn next_prime(start: u64) -> u64 {
-    let limit = (start + 1) * (start + 1); // Set a limit for generating primes
-    let mut sieve = vec![true; limit as usize];
+pub fn next_prime(start: u64) -> u64 {
     let mut current = start + 1;
-
-    while (current as f64).sqrt() as u64 <= start {
-        if sieve[current as usize] {
-            for i in (current * current..limit).step_by(current as usize) {
-                sieve[i as usize] = false;
-            }
-        }
+    while !is_prime(current) {
         current += 1;
     }
-
-    while current < limit as u64 && !sieve[current as usize] {
-        current += 1;
-    }
-
     current
+}
+
+fn is_prime(n: u64) -> bool {
+    if n <= 1 {
+        return false;
+    }
+    if n <= 3 {
+        return true;
+    }
+    if n % 2 == 0 || n % 3 == 0 {
+        return false;
+    }
+    let mut i = 5;
+    while i * i <= n {
+        if n % i == 0 || n % (i + 2) == 0 {
+            return false;
+        }
+        i += 6;
+    }
+    true
 }
