@@ -1,28 +1,29 @@
-
+// TODO: There is a non-thread-save error in this code
+// Change the iterator to always take the next element and not create a list at first and then do something else
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::mem;
 
-pub struct MultiHashSet<V: Hash + PartialEq> {
+pub struct MultiHashSet<V: Hash + PartialEq + Clone> {
     size: usize,
     expansion_factor: f32,
     used: usize,
     content: Vec<Option<MultiHashElement<V>>>
 }
 
-struct MultiHashElement<V: Hash + PartialEq> {
+struct MultiHashElement<V: Hash + PartialEq + Clone> {
     next: *mut MultiHashElement<V>,
     count: usize,
     value: V
 }
 
-pub struct MultiHashSetIterator<'a, V: Hash + PartialEq> {
-    content: &'a Vec<Option<MultiHashElement<V>>>,
+pub struct MultiHashSetIterator<V: Hash + PartialEq + Clone> {
+    content: Vec<V>,
     current_index: usize,
 }
 
 
-
-impl<V: Hash + PartialEq> MultiHashSet<V> {
+impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
 
     pub fn new() -> Self {
         let standard_size = 10;
@@ -35,6 +36,7 @@ impl<V: Hash + PartialEq> MultiHashSet<V> {
 
     pub fn size(mut self, size: usize) -> Self {
         self.size = size;
+        self.content = (0..self.size).map(|_| None).collect();
         self
     }
 
@@ -44,37 +46,42 @@ impl<V: Hash + PartialEq> MultiHashSet<V> {
         self
     }
 
-    pub fn iter(&self) -> MultiHashSetIterator<'_, V> {
+    pub fn get_size(&self) -> usize {
+        return self.size;
+    }
+
+    pub fn iter(&self) -> MultiHashSetIterator<V> {
+        let traverse_result = self.traverse();
         MultiHashSetIterator {
-            content: &self.content,
+            content: traverse_result,
             current_index: 0,
         }
     }
 
-    pub fn put(&mut self, value: V) -> bool {
+    pub fn put(&mut self, value: V) {
         self.resize_check();
         let hashed = self.hash(&value);
         let pos = hashed as usize % self.size;
-    
         let new_content = MultiHashElement::new(value);
-        if self.content[pos].is_none() {
-            self.content[pos] = Some(new_content);
+        self.put_or_append(pos, new_content);
+    }
+
+    fn put_or_append(&mut self, position: usize, value: MultiHashElement<V>) {
+        if self.content[position].is_none() {
+            self.content[position] = Some(value);
             self.used += 1;
-            true
-        } else if let Some(element) = self.content[pos].as_mut() {
-            element.append(new_content);
-            true
-        } else {
-            false
+        } else if let Some(element) = self.content[position].as_mut() {
+            element.append(value);
         }
     }
 
+
     pub fn count(&mut self, lookup: &V) -> usize {
-        let hashed = self.hash(&lookup);
+        let hashed = self.hash(lookup);
         let pos = hashed as usize % self.size;
     
         if let Some(element) = &mut self.content[pos] {
-            if let Some(found) = element.get(&lookup) {
+            if let Some(found) = element.get(lookup) {
                 return found.count;
             }
         }
@@ -83,10 +90,19 @@ impl<V: Hash + PartialEq> MultiHashSet<V> {
 
     fn resize_check(&mut self) { // TODO: Make this function scalable (potential overflow because of f64)
         if self.used as f64 > self.size as f64 * self.expansion_factor as f64 {
-            self.size *= 1 + self.expansion_factor as usize;
+            self.size *= 2; // TODO: Change this to some more sensfull value
 
-            let num_elements_to_add = self.size - self.content.len();
-            self.content.extend((0..num_elements_to_add).map(|_| None));
+            self.reallocate_positions();
+        }
+    }
+
+    fn reallocate_positions(&mut self) { // TODO: Look for a more efficient sollution
+        let content: Vec<V> = self.traverse();
+        self.content = (0..self.size).map(|_| None).collect();
+        self.used = 0;
+
+        for element in content {
+            self.put(element)
         }
     }
 
@@ -97,17 +113,27 @@ impl<V: Hash + PartialEq> MultiHashSet<V> {
         hasher.finish()
     }
 
+    fn traverse(&self) -> Vec<V> {
+        let mut content: Vec<V> = vec![];
+        for element in &self.content {
+            if let Some(exists) = &element {
+                exists.cummulate(&mut content);
+            }
+        }
+        content
+    }
+
 }
 
 
-impl<'a, V: Hash + PartialEq> Iterator for MultiHashSetIterator<'a, V> {
-    type Item = &'a V;
+impl<'a, V: Hash + PartialEq + Clone> Iterator for MultiHashSetIterator<V> {
+    type Item = V;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.current_index < self.content.len() {
-            if let Some(element) = &self.content[self.current_index] {
+            if let element = &self.content[self.current_index] {
                 self.current_index += 1;
-                return Some(&element.value);
+                return Some(element.clone());
             }
             self.current_index += 1;
         }
@@ -115,7 +141,7 @@ impl<'a, V: Hash + PartialEq> Iterator for MultiHashSetIterator<'a, V> {
     }
 }
 
-impl<V: Hash + PartialEq> MultiHashElement<V> {
+impl<V: Hash + PartialEq + Clone> MultiHashElement<V> {
     pub fn new(val: V) -> Self {
         Self {
             next: std::ptr::null_mut(),
@@ -138,17 +164,27 @@ impl<V: Hash + PartialEq> MultiHashElement<V> {
         next_element.append(next);
     }
 
-    pub fn get(&mut self, lookup: &V) -> Option<&MultiHashElement<V>> {
+    pub fn get(&self, lookup: &V) -> Option<&MultiHashElement<V>> {
         if &self.value == lookup {
-            return Some(self)
+            return Some(self);
         }
 
-        if self.next == std::ptr::null_mut() {
-            return None
+        if self.next.is_null() {
+            return None;
         }
 
-        let next_element = unsafe { &mut *self.next };
+        let next_element = unsafe { &*self.next };
         next_element.get(lookup)
         
     }
+
+    pub fn cummulate(&self, buffer: &mut Vec<V>) {
+        buffer.push(self.value.clone());
+        if self.next.is_null() {
+            return;
+        }
+        let next_element = unsafe { &*self.next };
+        next_element.cummulate(buffer);
+    }
+
 }
