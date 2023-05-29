@@ -3,6 +3,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem;
+use std::ops::Deref;
 
 pub struct MultiHashSet<V: Hash + PartialEq + Clone> {
     size: usize,
@@ -76,17 +77,58 @@ impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
     }
 
 
-    pub fn count(&mut self, lookup: &V) -> usize {
+    pub fn remove(&mut self, value: &V) -> bool {
+        let hashed = self.hash(value) as usize;
+        let pos = hashed % self.size;
+
+        if let Some(content) = &mut self.content[pos] {
+            if &content.value == value {
+                if content.next.is_null() {
+                    self.content[pos] = None;
+                    return true;
+                }
+
+                let next_element = unsafe { &*content.next };
+
+                let mut new_element = MultiHashElement::new(next_element.value.clone());
+                new_element.next = next_element.next;
+                new_element.count = next_element.count;
+
+                self.content[pos] = Some(new_element);
+                return true;
+            }
+            return content.remove(value);
+        }
+        false
+    }
+
+
+    pub fn count(&self, lookup: &V) -> usize {
         let hashed = self.hash(lookup);
         let pos = hashed as usize % self.size;
     
-        if let Some(element) = &mut self.content[pos] {
+        if let Some(element) = &self.content[pos] {
             if let Some(found) = element.get(lookup) {
                 return found.count;
             }
         }
         0
     }
+
+
+    pub fn contains(&self, lookup: &V) -> bool {
+        let hashed = self.hash(lookup);
+        let pos = hashed as usize % self.size;
+
+        if let Some(element) = &self.content[pos] {
+            if let Some(_) = element.get(lookup) {
+                return true
+            }
+        }
+        false
+        
+    }
+
 
     fn resize_check(&mut self) { // TODO: Make this function scalable (potential overflow because of f64)
         if self.used as f64 > self.size as f64 * self.expansion_factor as f64 {
@@ -185,6 +227,18 @@ impl<V: Hash + PartialEq + Clone> MultiHashElement<V> {
         }
         let next_element = unsafe { &*self.next };
         next_element.cummulate(buffer);
+    }
+
+
+    pub fn remove(&mut self, value: &V) -> bool {
+        if self.next.is_null() {return false;}
+        let next_element = unsafe { &mut *self.next };
+        if &next_element.value == value {
+            self.next = next_element.next;
+            return true;
+        }
+        next_element.remove(value);
+        false
     }
 
 }

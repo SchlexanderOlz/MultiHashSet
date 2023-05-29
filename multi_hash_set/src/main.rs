@@ -9,13 +9,28 @@ fn main() {
 
     let start_time = Instant::now();
 
-    for i in 0..50000 {
+    for i in 0..1000 {
         my_set.put(i.to_string());
     }
 
-    for i in 0..50000 {
-        my_set.count(&i.to_string());
+    my_set.remove(&123.to_string());
+    my_set.remove(&838.to_string());
+
+    for i in 0..1000 {
+        println!("{}", my_set.count(&i.to_string()));
     }
+
+    println!("-----------------------------------------");
+
+
+    for element in my_set.iter() {
+        println!("{}", element);
+    }
+
+
+    println!("{}", my_set.contains(&500.to_string()));
+    println!("{}", my_set.contains(&838.to_string()));
+
     
     let elapsed_time = start_time.elapsed();
 
