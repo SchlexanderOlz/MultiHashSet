@@ -54,9 +54,53 @@ impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
     }
 
     pub fn put(&mut self, value: V) {
-        self.resize_check();
-        let hashed = self.hash(&value);
-        let pos = hashed as usize % self.size;
+        fn next_prime(start: u64) -> u64 {
+            fn is_prime(n: u64) -> bool {
+                if n <= 1 {
+                    return false;
+                }
+                if n <= 3 {
+                    return true;
+                }
+                if n % 2 == 0 || n % 3 == 0 {
+                    return false;
+                }
+                let mut i = 5;
+                while i * i <= n {
+                    if n % i == 0 || n % (i + 2) == 0 {
+                        return false;
+                    }
+                    i += 6;
+                }
+                true
+            }
+        
+            let mut current = start + 1;
+            while !is_prime(current) {
+                current += 1;
+            }
+            current
+        }        
+
+        // Resize check
+        // Checks if the size of the Set needs to change
+        if self.used as f64 > self.size as f64 * self.expansion_factor as f64 {
+            self.size = next_prime(self.size as u64) as usize;
+
+            let content: Vec<V> = self.traverse();
+            self.content = (0..self.size).map(|_| None).collect();
+            self.used = 0;
+
+            for element in content {
+                self.put(element)
+            }
+        }
+        
+        let pos = {
+            let hashed = self.hash(&value);
+            hashed as usize % self.size
+        };
+
         let new_content = MultiHashElement::new(value);
 
         if self.content[pos].is_none() {
@@ -81,18 +125,16 @@ impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
                     return true;
                 }
 
-
                 // This get's the "next" element of the HashElement. It instanciates it
-                let new_element = {
+                self.content[pos] = {
                     let next_element = unsafe { &*content.next };
 
                     let mut new_element = MultiHashElement::new(next_element.value.clone());
                     new_element.next = next_element.next;
                     new_element.count = next_element.count;
-                    new_element
+                    Some(new_element)
                 };
 
-                self.content[pos] = Some(new_element);
                 return true;
             }
             return content.remove(value);
@@ -121,30 +163,9 @@ impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
         };
 
         if let Some(element) = &self.content[pos] {
-            if let Some(_) = element.get(lookup) {
-                return true;
-            }
+            return  element.get(lookup).is_some();
         }
         false
-    }
-
-    fn resize_check(&mut self) {
-        if self.used as f64 > self.size as f64 * self.expansion_factor as f64 {
-            self.size = next_prime(self.size as u64) as usize;
-
-            self.reallocate_positions();
-        }
-    }
-
-    fn reallocate_positions(&mut self) {
-        // TODO: Look for a more efficient sollution
-        let content: Vec<V> = self.traverse();
-        self.content = (0..self.size).map(|_| None).collect();
-        self.used = 0;
-
-        for element in content {
-            self.put(element)
-        }
     }
 
     fn hash(&self, value: &V) -> u64 {
@@ -162,33 +183,4 @@ impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
         }
         content
     }
-}
-
-fn next_prime(start: u64) -> u64 {
-    // Function checks if a number is a prime
-    fn is_prime(n: u64) -> bool {
-        if n <= 1 {
-            return false;
-        }
-        if n <= 3 {
-            return true;
-        }
-        if n % 2 == 0 || n % 3 == 0 {
-            return false;
-        }
-        let mut i = 5;
-        while i * i <= n {
-            if n % i == 0 || n % (i + 2) == 0 {
-                return false;
-            }
-            i += 6;
-        }
-        true
-    }
-
-    let mut current = start + 1;
-    while !is_prime(current) {
-        current += 1;
-    }
-    current
 }
