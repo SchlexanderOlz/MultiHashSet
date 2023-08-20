@@ -1,7 +1,10 @@
 use std::hash::Hash;
+use std::sync::Arc;
+
+use crate::HashSetError;
 
 pub struct MultiHashElement<V: Hash + PartialEq + Clone> {
-    pub next: *mut MultiHashElement<V>,
+    pub next: Option<Arc<MultiHashElement<V>>>,
     pub count: usize,
     pub value: V,
 }
@@ -9,7 +12,7 @@ pub struct MultiHashElement<V: Hash + PartialEq + Clone> {
 impl<V: Hash + PartialEq + Clone> MultiHashElement<V> {
     pub fn new(val: V) -> Self {
         Self {
-            next: std::ptr::null_mut(),
+            next: None,
             count: 1,
             value: val,
         }
@@ -21,12 +24,12 @@ impl<V: Hash + PartialEq + Clone> MultiHashElement<V> {
             return;
         }
 
-        if self.next.is_null() {
-            self.next = Box::into_raw(Box::new(next));
-            return;
+        if let Some(mut next_element) = self.next.as_mut() {
+            let next_element = Arc::get_mut(&mut next_element).unwrap();
+            next_element.append(next);
+        } else {
+            self.next = Some(Arc::new(next));
         }
-        let next_element = unsafe { &mut *self.next };
-        next_element.append(next);
     }
 
     pub fn get(&self, lookup: &V) -> Option<&MultiHashElement<V>> {
@@ -34,33 +37,36 @@ impl<V: Hash + PartialEq + Clone> MultiHashElement<V> {
             return Some(self);
         }
 
-        if self.next.is_null() {
+        if let Some(next_element) = &self.next {
+            return next_element.get(lookup);
+        } else {
             return None;
         }
-
-        let next_element = unsafe { &*self.next };
-        next_element.get(lookup)
     }
 
     pub fn cummulate(&self, buffer: &mut Vec<V>) {
         buffer.push(self.value.clone());
-        if self.next.is_null() {
-            return;
+        if let Some(next_element) = &self.next {
+            next_element.cummulate(buffer);
         }
-        let next_element = unsafe { &*self.next };
-        next_element.cummulate(buffer);
     }
 
-    pub fn remove(&mut self, value: &V) -> bool {
-        if self.next.is_null() {
-            return false;
+    pub fn remove(&mut self, value: V) -> Result<(), HashSetError> {
+        if self.next.is_none() {
+            return Err(HashSetError::RemoveError);
         }
-        let next_element = unsafe { &mut *self.next };
-        if &next_element.value == value {
-            self.next = next_element.next;
-            return true;
+        if let Some(mut next_element) = self.next.as_mut() {
+            let next_element = Arc::get_mut(&mut next_element).unwrap();
+            if next_element.value == value {
+                if let Some(over_next) = &next_element.next {
+                    self.next = Some(Arc::clone(&over_next));
+                } else {
+                    self.next = None;
+                }
+                return Ok(());
+            }
+            return next_element.remove(value);
         }
-        next_element.remove(value);
-        false
+        return Err(HashSetError::RemoveError);
     }
 }

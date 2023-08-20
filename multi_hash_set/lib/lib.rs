@@ -6,26 +6,26 @@ mod multi_hash_set_iterator;
 use multi_hash_element::MultiHashElement;
 use multi_hash_set_iterator::MultiHashSetIterator;
 use std::collections::hash_map::DefaultHasher;
+use std::error::Error;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
+
+const STD_SIZE: usize = 11;
+const EXPANSION: f32 = 0.75;
 
 pub struct MultiHashSet<V: Hash + PartialEq + Clone> {
     size: usize,
     expansion_factor: f32,
     used: usize,
-    content: Vec<Option<MultiHashElement<V>>>,
+    content: Vec<Option<Arc<MultiHashElement<V>>>>,
 }
 
 impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
     pub fn new() -> Self {
-        let standard_size = 11;
-        let default_expansion_factor = 0.75;
-
-        let empty_vec: Vec<Option<MultiHashElement<V>>> =
-            (0..standard_size).map(|_| None).collect();
         Self {
-            size: standard_size,
-            expansion_factor: default_expansion_factor,
-            content: empty_vec,
+            size: STD_SIZE,
+            expansion_factor: EXPANSION,
+            content: (0..STD_SIZE).map(|_| None).collect(),
             used: 0,
         }
     }
@@ -74,13 +74,13 @@ impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
                 }
                 true
             }
-        
+
             let mut current = start + 1;
             while !is_prime(current) {
                 current += 1;
             }
             current
-        }        
+        }
 
         // Resize check
         // Checks if the size of the Set needs to change
@@ -95,7 +95,7 @@ impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
                 self.put(element)
             }
         }
-        
+
         let pos = {
             let hashed = self.hash(&value);
             hashed as usize % self.size
@@ -103,67 +103,63 @@ impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
 
         let new_content = MultiHashElement::new(value);
 
-        if self.content[pos].is_none() {
-            self.content[pos] = Some(new_content);
-            self.used += 1;
-        } else if let Some(element) = self.content[pos].as_mut() {
+        if let Some(element) = self.content[pos].as_mut() {
+            let element = Arc::get_mut(element).unwrap();
             element.append(new_content);
+        } else {
+            self.content[pos] = Some(Arc::new(new_content));
+            self.used += 1;
         }
     }
 
-    pub fn remove(&mut self, value: &V) -> bool {
-
+    pub fn remove(&mut self, value: V) -> Result<(), HashSetError> {
         let pos = {
-            let hashed = self.hash(value) as usize;
+            let hashed = self.hash(&value) as usize;
             hashed % self.size
         };
 
-        if let Some(content) = &mut self.content[pos] {
-            if &content.value == value {
-                if content.next.is_null() {
-                    self.content[pos] = None;
-                    return true;
+        if let Some(content) = self.content[pos].as_mut() {
+            let content = Arc::get_mut(content).unwrap();
+            if content.value == value {
+                content.count -= 1;
+                if content.count > 0 {
+                    return Ok(());
                 }
 
-                // This get's the "next" element of the HashElement. It instanciates it
-                self.content[pos] = {
-                    let next_element = unsafe { &*content.next };
-
-                    let mut new_element = MultiHashElement::new(next_element.value.clone());
-                    new_element.next = next_element.next;
-                    new_element.count = next_element.count;
-                    Some(new_element)
-                };
-
-                return true;
+                if let Some(next_element) = &content.next {
+                    self.content[pos] = Some(Arc::clone(next_element));
+                } else {
+                    self.content[pos] = None;
+                }
+                return Ok(());
             }
             return content.remove(value);
         }
-        false
+        Err(HashSetError::RemoveError)
     }
 
-    pub fn count(&self, lookup: &V) -> usize {
+    pub fn count(&self, lookup: V) -> usize {
         let pos = {
-            let hashed = self.hash(lookup) as usize;
+            let hashed = self.hash(&lookup) as usize;
             hashed % self.size
         };
 
         if let Some(element) = &self.content[pos] {
-            if let Some(found) = element.get(lookup) {
+            if let Some(found) = element.get(&lookup) {
                 return found.count;
             }
         }
         0
     }
 
-    pub fn contains(&self, lookup: &V) -> bool {
+    pub fn contains(&self, lookup: V) -> bool {
         let pos = {
-            let hashed = self.hash(lookup) as usize;
+            let hashed = self.hash(&lookup) as usize;
             hashed % self.size
         };
 
         if let Some(element) = &self.content[pos] {
-            return  element.get(lookup).is_some();
+            return element.get(&lookup).is_some();
         }
         false
     }
@@ -183,4 +179,9 @@ impl<V: Hash + PartialEq + Clone> MultiHashSet<V> {
         }
         content
     }
+}
+
+#[derive(Debug)]
+pub enum HashSetError {
+    RemoveError,
 }

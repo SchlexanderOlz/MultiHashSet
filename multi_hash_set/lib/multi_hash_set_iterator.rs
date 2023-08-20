@@ -9,12 +9,9 @@ impl<'a, V: Hash + PartialEq + Clone> Iterator for MultiHashSetIterator<V> {
     type Item = V;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.current_index < self.content.len() {
-            if let element = &self.content[self.current_index] {
-                self.current_index += 1;
-                return Some(element.clone());
-            }
+        if self.current_index < self.content.len() {
             self.current_index += 1;
+            return Some(self.content[self.current_index].clone());
         }
         None
     }
